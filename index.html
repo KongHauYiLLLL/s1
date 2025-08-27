@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>s2 — Smartphone Simulator (vanilla)</title>
+  <style>
+    :root{
+      --phone-w: 380px;
+      --phone-h: 740px;
+      --bezel: 18px;
+      --radius: 34px;
+      --bg-light: #f6f8fb;
+      --bg-dark: #0b1220;
+      --card-light: #ffffff;
+      --card-dark: #0f1724;
+      --muted: #6b7280;
+    }
+
+    html,body{height:100%;margin:0;}
+    body{
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:24px;
+      box-sizing:border-box;
+      background: linear-gradient(135deg,#1e3c72,#2a5298);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+    }
+
+    /* Phone frame */
+    .phone {
+      width: min(calc(var(--phone-w)), 92vw);
+      height: min(calc(var(--phone-h)), 92vh);
+      border-radius: var(--radius);
+      background: var(--card-light);
+      box-shadow: 0 30px 80px rgba(8,10,25,0.45);
+      border: var(--bezel) solid rgba(0,0,0,0.2);
+      overflow: hidden;
+      display:flex;
+      flex-direction:column;
+      min-width: 300px;
+      position: relative;
+    }
+
+    /* status bar area (top) */
+    .status {
+      height: 44px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:8px 12px;
+      box-sizing:border-box;
+      border-bottom:1px solid rgba(0,0,0,0.04);
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+      z-index:2;
+    }
+    .time { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+    /* content area */
+    .screen {
+      flex:1;
+      overflow:auto;
+      -webkit-overflow-scrolling: touch;
+      padding:18px;
+      box-sizing:border-box;
+      padding-bottom:92px; /* leave space for bottom dock */
+    }
+
+    /* bottom dock */
+    .dock {
+      height:56px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border-top:1px solid rgba(0,0,0,0.04);
+      background: linear-gradient(0deg, rgba(255,255,255,0.02), transparent);
+    }
+
+    /* common card */
+    .card {
+      background: var(--card-light);
+      border-radius: 12px;
+      padding:12px;
+      box-shadow: 0 6px 18px rgba(8,10,25,0.06);
+    }
+
+    /* lock / setup */
+    .center-col {
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:14px;
+    }
+    input[type="password"], input[type="text"], input[type="number"]{
+      width:160px;
+      padding:10px 12px;
+      border-radius:10px;
+      border:1px solid rgba(0,0,0,0.08);
+      font-size:18px;
+      text-align:center;
+    }
+
+    button {
+      cursor:pointer;
+      padding:10px 14px;
+      border-radius:10px;
+      border: none;
+      background: #111827;
+      color:white;
+      font-weight:600;
+    }
+    button.ghost {
+      background:transparent;
+      color:var(--muted);
+      border:1px solid rgba(0,0,0,0.06);
+    }
+
+    /* grid home */
+    .grid {
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap:18px;
+    }
+    .app {
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+    }
+    .app .badge {
+      width:64px;
+      height:64px;
+      border-radius:16px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:26px;
+      background: #f3f4f6;
+      box-shadow: inset 0 -6px 18px rgba(0,0,0,0.03);
+    }
+    .app span { font-size:13px; color:var(--muted); }
+
+    /* calculator */
+    .calc {
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      height:100%;
+    }
+    .calc .display {
+      background: #f3f4f6;
+      padding:14px;
+      border-radius:12px;
+      text-align:right;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size:28px;
+      min-height:56px;
+    }
+    .pad {
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap:8px;
+    }
+    .pad button {
+      padding:18px;
+      font-size:18px;
+      border-radius:10px;
+      border: none;
+      background:#e6e9ee;
+      color:#111827;
+      font-weight:600;
+    }
+    .pad button.op { background:#ffd166; }
+    .pad button.equal { background:#06b6d4; color:#fff; grid-row: span 2; }
+
+    /* clock */
+    .clock-face {
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:12px;
+      padding:8px;
+    }
+    .big-time { font-size:44px; font-weight:700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .muted { color:var(--muted); }
+
+    /* settings */
+    .settings { display:flex; flex-direction:column; gap:12px; }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+
+    /* dark theme */
+    .dark body, .dark :root { /* nothing */ }
+    .dark .phone { background: var(--card-dark); border-color: #111827; color:#e6eef7; }
+    .dark .app .badge { background: #111827; color:#e6eef7; box-shadow:none; }
+    .dark .card { background: #0b1220; box-shadow:none; color:#e6eef7; }
+    .dark .calc .display { background:#0b1220; color:#e6eef7; border:1px solid rgba(255,255,255,0.03); }
+    .dark .pad button { background:#1f2937; color:#e6eef7; }
+    .dark .pad button.op { background:#7c3aed; }
+    .dark .pad button.equal { background:#0891b2; }
+    .dark input { background:#071226; color:#e6eef7; border:1px solid rgba(255,255,255,0.04); text-align:center; }
+    .dark .status { border-bottom-color: rgba(255,255,255,0.03); }
+    /* scroll behaviors */
+    .screen::-webkit-scrollbar { width:8px; height:8px; }
+    .screen::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius:8px; }
+    @media (max-width:420px){
+      :root{ --phone-w: 360px; --phone-h: 700px; }
+      .app .badge { width:54px; height:54px; font-size:22px; border-radius:12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="phone" id="phone">
+    <div class="status">
+      <div class="time" id="status-time">--:--</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div style="width:8px;height:8px;border-radius:50%;background:#9CA3AF;"></div>
+        <div style="width:8px;height:8px;border-radius:50%;background:#9CA3AF;"></div>
+        <div style="width:8px;height:8px;border-radius:50%;background:#9CA3AF;"></div>
+      </div>
+    </div>
+
+    <div class="screen" id="screen">
+      <!-- Screens get injected here -->
+    </div>
+
+    <div class="dock">
+      <button class="ghost" id="lock-btn">Lock</button>
+    </div>
+  </div>
+
+  <script>
+    /* ---------------------------
+       Simple s2 single-file app
+       --------------------------- */
+
+    // State
+    const screenEl = document.getElementById('screen');
+    const statusTimeEl = document.getElementById('status-time');
+    const lockBtn = document.getElementById('lock-btn');
+    const phoneEl = document.getElementById('phone');
+    const body = document.body;
+
+    const STORAGE_KEY = 'phonePassword';        // password storage
+    const THEME_KEY = 'phoneTheme';             // theme storage
+    const MESH_KEY = 'meshGradient';            // gradient storage
+
+    let appState = {
+      current: 'setup', // one of setup | unlock | home | calculator | clock | settings
+      theme: localStorage.getItem(THEME_KEY) || 'light',
+      password: localStorage.getItem(STORAGE_KEY) || null,
+      mesh: null,
+      // calculator:
+      calc: { display: '0', previous: null, op: null, waiting: false },
+      // clock:
+      clockTab: 'time', // time | timer | stopwatch
+      timer: { h:0,m:0,s:0, timeLeft: 0, running:false, finished:false },
+      stopwatch: { h:0,m:0,s:0,ms:0, running:false },
+      // flash toggles:
+      flashTick: false,
+    };
+
+    // If password existed: go to unlock
+    if (appState.password) appState.current = 'unlock';
+
+    // apply theme
+    function applyTheme(){
+      if (appState.theme === 'dark') body.classList.add('dark');
+      else body.classList.remove('dark');
+    }
+    applyTheme();
+
+    // mesh gradient generation
+    function generateMesh() {
+      // three HSL colors
+      const colors = [];
+      for(let i=0;i<3;i++){
+        const hue = Math.floor(Math.random()*360);
+        const sat = 70 + Math.floor(Math.random()*20);
+        const light = 75 + Math.floor(Math.random()*10);
+        colors.push({hue, sat, light});
+      }
+      localStorage.setItem(MESH_KEY, JSON.stringify(colors));
+      return colors;
+    }
+    function loadMesh() {
+      try {
+        const raw = localStorage.getItem(MESH_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch(e){}
+      return generateMesh();
+    }
+    appState.mesh = loadMesh();
+    function meshStyle() {
+      const c = appState.mesh;
+      if(!c || c.length<3) return {};
+      const s = `
+        radial-gradient(at 40% 20%, hsl(${c[0].hue}, ${c[0].sat}%, ${c[0].light}%) 0px, transparent 50%),
+        radial-gradient(at 80% 0%, hsl(${c[1].hue}, ${c[1].sat}%, ${c[1].light}%) 0px, transparent 50%),
+        radial-gradient(at 0% 50%, hsl(${c[2].hue}, ${c[2].sat}%, ${c[2].light}%) 0px, transparent 50%)
+      `;
+      return s;
+    }
+
+    // status clock
+    function tickTime(){
+      const now = new Date();
+      const hhmm = now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+      statusTimeEl.textContent = hhmm;
+      // schedule next tick via setTimeout synced to the second
+    }
+    tickTime();
+    setInterval(tickTime, 1000);
+
+    // navigation
+    function go(screen){
+      appState.current = screen;
+      render();
+      // if leaving stopwatch, stop it
+      if (screen !== 'clock' && appState.stopwatch.running) {
+        stopStopwatch();
+      }
+    }
+
+    // -------------------------
+    // Screens renderers
+    // -------------------------
+    function render(){
+      // apply mesh background to body outside phone to mimic previous gradient
+      document.body.style.background = meshStyle() || 'linear-gradient(135deg,#1e3c72,#2a5298)';
+
+      switch(appState.current) {
+        case 'setup': return renderSetup();
+        case 'unlock': return renderUnlock();
+        case 'home': return renderHome();
+        case 'calculator': return renderCalculator();
+        case 'clock': return renderClock();
+        case 'settings': return renderSettings();
+        default: renderHome();
+      }
+    }
+
+    /* ---- Setup ---- */
+    function renderSetup(){
+      screenEl.innerHTML = '';
+      const c = document.createElement('div');
+      c.className = 'center-col';
+      c.style.height = '100%';
+      c.innerHTML = `
+        <div style="text-align:center;">
+          <div style="font-size:32px;font-weight:700;">s2</div>
+          <div style="color:var(--muted);margin-top:6px;">Create a 4-digit password</div>
+        </div>
+      `;
+      const inp = document.createElement('input');
+      inp.type = 'password';
+      inp.maxLength = 4;
+      inp.placeholder = 'Enter 4-digit password';
+      inp.style.marginTop = '12px';
+      const inp2 = document.createElement('input');
+      inp2.type = 'password';
+      inp2.maxLength = 4;
+      inp2.placeholder = 'Confirm password';
+      const btn = document.createElement('button');
+      btn.textContent = 'Set Password';
+      btn.style.marginTop = '10px';
+      btn.onclick = () => {
+        const a = inp.value.trim();
+        const b = inp2.value.trim();
+        if (!/^[0-9]{4}$/.test(a)) { alert('Password must be 4 digits'); return; }
+        if (a !== b) { alert('Passwords do not match'); return; }
+        localStorage.setItem(STORAGE_KEY, a);
+        appState.password = a;
+        go('home');
+      };
+      c.appendChild(inp);
+      c.appendChild(inp2);
+      c.appendChild(btn);
+      screenEl.appendChild(c);
+    }
+
+    /* ---- Unlock ---- */
+    function renderUnlock(){
+      screenEl.innerHTML = '';
+      const c = document.createElement('div');
+      c.className = 'center-col';
+      c.style.height = '100%';
+      c.innerHTML = `
+        <div style="text-align:center;">
+          <div style="font-size:26px;font-weight:700;">Unlock Phone</div>
+          <div style="color:var(--muted);margin-top:6px;" id="unlock-time"></div>
+        </div>
+      `;
+      const timeId = c.querySelector('#unlock-time');
+      function updateUnlockTime(){ timeId.textContent = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }
+      updateUnlockTime();
+      setInterval(updateUnlockTime, 1000);
+
+      const inp = document.createElement('input');
+      inp.type='password'; inp.maxLength = 4; inp.placeholder='Enter password';
+      const btn = document.createElement('button'); btn.textContent = 'Unlock';
+      btn.onclick = () => {
+        const v = inp.value.trim();
+        if (v === appState.password) go('home');
+        else alert('Incorrect password');
+      };
+      c.appendChild(inp); c.appendChild(btn);
+      screenEl.appendChild(c);
+    }
+
+    /* ---- Home ---- */
+    function renderHome(){
+      screenEl.innerHTML = '';
+      const wrap = document.createElement('div');
+      wrap.className = 'card';
+      wrap.style.padding = '14px';
+      // optional header
+      const header = document.createElement('div');
+      header.style.display='flex';
+      header.style.justifyContent='space-between';
+      header.style.alignItems='center';
+      header.style.marginBottom='14px';
+      header.innerHTML = `<div style="font-weight:700">Home</div><div class="muted">${new Date().toLocaleDateString()}</div>`;
+      wrap.appendChild(header);
+
+      const grid = document.createElement('div'); grid.className = 'grid';
+      // built-in apps
+      const apps = [
+        { id:'calculator', icon:'🧮', name:'Calculator' },
+        { id:'clock', icon:'⏰', name:'Clock' },
+        { id:'settings', icon:'⚙️', name:'Settings' },
+      ];
+      apps.forEach(a=>{
+        const el = document.createElement('div'); el.className='app';
+        el.innerHTML = `<div class="badge">${a.icon}</div><span>${a.name}</span>`;
+        el.onclick = () => go(a.id);
+        grid.appendChild(el);
+      });
+
+      wrap.appendChild(grid);
+      screenEl.appendChild(wrap);
+    }
+
+    /* ---- Calculator ---- */
+    function renderCalculator(){
+      screenEl.innerHTML = '';
+      const wrapper = document.createElement('div'); wrapper.className='calc';
+      const header = document.createElement('div'); header.style.display='flex'; header.style.justifyContent='space-between'; header.style.alignItems='center';
+      header.innerHTML = `<div style="font-weight:700">Calculator</div><div><button class="ghost" id="calc-home">Home</button></div>`;
+      wrapper.appendChild(header);
+      document.addEventListener('click', (e)=>{ if(e.target && e.target.id === 'calc-home') go('home'); });
+
+      const disp = document.createElement('div'); disp.className='display'; disp.id='calc-display';
+      disp.textContent = appState.calc.display;
+      wrapper.appendChild(disp);
+
+      const pad = document.createElement('div'); pad.className='pad';
+      const keys = ['7','8','9','÷','4','5','6','×','1','2','3','-','0','.','=','+'];
+      keys.forEach(k=>{
+        const b = document.createElement('button');
+        b.textContent = k;
+        if (['÷','×','-','+'].includes(k)) b.classList.add('op');
+        if (k === '=') b.classList.add('equal');
+        b.onclick = () => handleCalcPress(k);
+        pad.appendChild(b);
+      });
+
+      // add clear & home buttons at bottom (two extra)
+      const clearBtn = document.createElement('button'); clearBtn.textContent='C'; clearBtn.onclick = clearCalc;
+      const homeBtn  = document.createElement('button'); homeBtn.textContent = 'Home'; homeBtn.onclick = () => go('home');
+      // append them to pad by spanning manually - simple approach: create container below pad
+      wrapper.appendChild(pad);
+      const bottomRow = document.createElement('div'); bottomRow.style.display='flex'; bottomRow.style.gap='8px'; bottomRow.style.marginTop='8px';
+      bottomRow.appendChild(clearBtn); bottomRow.appendChild(homeBtn);
+      wrapper.appendChild(bottomRow);
+
+      screenEl.appendChild(wrapper);
+    }
+
+    function handleCalcPress(key){
+      const dispEl = document.getElementById('calc-display');
+      let buf = appState.calc.display;
+      // treat special keys
+      if (key === '=') {
+        // compute result safely replace × ÷
+        try {
+          const expr = buf.replace(/×/g,'*').replace(/÷/g,'/').replace(/[^0-9+\-*/(). ]/g,'');
+          // evaluate using Function (slightly safer than eval but still use carefully)
+          const fn = new Function('return (' + expr + ')');
+          const res = fn();
+          appState.calc.display = String(res);
+        } catch(e) {
+          appState.calc.display = 'Error';
+        }
+      } else if (['+','-','×','÷'].includes(key)) {
+        // append operator
+        // prevent duplicate trailing ops
+        if (/[\+\-\×\÷]$/.test(buf)) {
+          buf = buf.replace(/[\+\-\×\÷]+$/, key);
+        } else {
+          buf = buf + key;
+        }
+        appState.calc.display = buf;
+      } else if (key === '.') {
+        // avoid multiple decimals in current number (simple approach)
+        const parts = buf.split(/[\+\-\×\÷]/);
+        const last = parts[parts.length-1];
+        if (!last.includes('.')) appState.calc.display = buf + '.';
+      } else {
+        // number
+        if (buf === '0' || buf === 'Error') appState.calc.display = key;
+        else appState.calc.display = buf + key;
+      }
+      if (dispEl) dispEl.textContent = appState.calc.display;
+    }
+    function clearCalc(){
+      appState.calc.display = '0';
+      const d = document.getElementById('calc-display');
+      if (d) d.textContent = appState.calc.display;
+    }
+
+    /* ---- Clock (Time / Timer / Stopwatch) ---- */
+    // Timer & Stopwatch intervals
+    let timerInterval = null;
+    let stopwatchInterval = null;
+    let flashInterval = null;
+
+    function renderClock(){
+      screenEl.innerHTML = '';
+      const container = document.createElement('div');
+      container.className = 'card';
+      const header = document.createElement('div'); header.style.display='flex'; header.style.justifyContent='space-between'; header.style.alignItems='center'; header.style.marginBottom='12px';
+      header.innerHTML = `<div style="font-weight:700">Clock</div><div><button class="ghost" id="clock-home">Home</button></div>`;
+      container.appendChild(header);
+      document.addEventListener('click', (e)=>{ if(e.target && e.target.id === 'clock-home') go('home'); });
+
+      // tabs
+      const tabs = document.createElement('div'); tabs.style.display='flex'; tabs.style.gap='8px'; tabs.style.marginBottom='12px';
+      const tTime = document.createElement('button'); tTime.textContent='Time'; tTime.className='ghost';
+      const tTimer = document.createElement('button'); tTimer.textContent='Timer'; tTimer.className='ghost';
+      const tStop = document.createElement('button'); tStop.textContent='Stopwatch'; tStop.className='ghost';
+      tabs.appendChild(tTime); tabs.appendChild(tTimer); tabs.appendChild(tStop);
+      tTime.onclick = ()=> { appState.clockTab='time'; renderClock(); };
+      tTimer.onclick = ()=> { appState.clockTab='timer'; renderClock(); };
+      tStop.onclick = ()=> { appState.clockTab='stopwatch'; renderClock(); };
+
+      container.appendChild(tabs);
+
+      // content
+      const content = document.createElement('div');
+      content.style.minHeight='320px';
+      if (appState.clockTab === 'time') {
+        const face = document.createElement('div'); face.className='clock-face';
+        const timeBig = document.createElement('div'); timeBig.className='big-time'; timeBig.id='big-time';
+        timeBig.textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        const dateLine = document.createElement('div'); dateLine.className='muted'; dateLine.textContent = new Date().toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'});
+        face.appendChild(timeBig); face.appendChild(dateLine);
+        content.appendChild(face);
+        // live updates
+        setInterval(()=> {
+          const el = document.getElementById('big-time');
+          if (el) el.textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        }, 1000);
+      } else if (appState.clockTab === 'timer') {
+        const timerWrap = document.createElement('div'); timerWrap.style.display='flex'; timerWrap.style.flexDirection='column'; timerWrap.style.gap='12px'; timerWrap.style.alignItems='center';
+        const display = document.createElement('div'); display.style.fontSize='36px'; display.style.fontFamily='ui-monospace,monospace';
+        display.id='timer-display';
+        display.textContent = formatTimer(appState.timer.timeLeft || 0);
+        timerWrap.appendChild(display);
+
+        if (appState.timer.finished) {
+          const finishBtn = document.createElement('div'); finishBtn.style.width='100%'; finishBtn.style.textAlign='center';
+          const finBlock = document.createElement('div'); finBlock.style.padding='36px'; finBlock.style.borderRadius='12px'; finBlock.style.cursor='pointer';
+          finBlock.style.background = appState.flashTick ? '#ef4444' : '#facc15';
+          finBlock.style.color = '#fff'; finBlock.textContent = "Time's Up! (tap to stop)";
+          finBlock.onclick = () => {
+            appState.timer.finished = false;
+            appState.flashTick = false;
+            if (flashInterval) { clearInterval(flashInterval); flashInterval=null; }
+            renderClock();
+          };
+          finishBtn.appendChild(finBlock);
+          timerWrap.appendChild(finishBtn);
+        } else if (!appState.timer.running) {
+          // inputs
+          const inputs = document.createElement('div'); inputs.style.display='flex'; inputs.style.gap='8px';
+          const inH = document.createElement('input'); inH.type='number'; inH.min=0; inH.max=23; inH.value = appState.timer.h; inH.style.width='64px';
+          const inM = document.createElement('input'); inM.type='number'; inM.min=0; inM.max=59; inM.value = appState.timer.m; inM.style.width='64px';
+          const inS = document.createElement('input'); inS.type='number'; inS.min=0; inS.max=59; inS.value = appState.timer.s; inS.style.width='64px';
+          inputs.appendChild(inH); inputs.appendChild(inM); inputs.appendChild(inS);
+          timerWrap.appendChild(inputs);
+
+          const btnStart = document.createElement('button'); btnStart.textContent = 'Start Timer';
+          btnStart.onclick = () => {
+            const h = parseInt(inH.value) || 0;
+            const m = parseInt(inM.value) || 0;
+            const s = parseInt(inS.value) || 0;
+            const total = h*3600 + m*60 + s;
+            if (total <= 0) { alert('Please set a valid time'); return; }
+            appState.timer.timeLeft = total;
+            appState.timer.running = true;
+            appState.timer.finished = false;
+            startTimer();
+            renderClock();
+          };
+          timerWrap.appendChild(btnStart);
+        } else {
+          const runningRow = document.createElement('div'); runningRow.style.display='flex'; runningRow.style.gap='8px';
+          const btnReset = document.createElement('button'); btnReset.textContent='Reset';
+          btnReset.onclick = () => {
+            stopTimer(true);
+            renderClock();
+          };
+          runningRow.appendChild(btnReset);
+          timerWrap.appendChild(runningRow);
+          // ensure timer currently shows remaining
+          display.textContent = formatTimer(appState.timer.timeLeft || 0);
+        }
+
+        content.appendChild(timerWrap);
+      } else { // stopwatch
+        const swWrap = document.createElement('div'); swWrap.style.display='flex'; swWrap.style.flexDirection='column'; swWrap.style.alignItems='center'; swWrap.style.gap='12px';
+        const swDisplay = document.createElement('div'); swDisplay.style.fontSize='36px'; swDisplay.style.fontFamily='ui-monospace,monospace';
+        swDisplay.id='sw-display';
+        swDisplay.textContent = formatStopwatch(appState.stopwatch);
+        swWrap.appendChild(swDisplay);
+
+        const controls = document.createElement('div'); controls.style.display='flex'; controls.style.gap='8px';
+        const startBtn = document.createElement('button'); startBtn.textContent = appState.stopwatch.running ? 'Stop' : 'Start';
+        startBtn.onclick = () => {
+          if (!appState.stopwatch.running) startStopwatch();
+          else stopStopwatch();
+          renderClock();
+        };
+        const resetBtn = document.createElement('button'); resetBtn.textContent = 'Reset';
+        resetBtn.onclick = () => { resetStopwatch(); renderClock(); };
+        controls.appendChild(startBtn); controls.appendChild(resetBtn);
+        swWrap.appendChild(controls);
+
+        content.appendChild(swWrap);
+      }
+
+      container.appendChild(content);
+      screenEl.appendChild(container);
+    }
+
+    /* Timer logic */
+    function startTimer(){
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(()=>{
+        if (appState.timer.timeLeft <= 0) {
+          stopTimer(false);
+          appState.timer.finished = true;
+          // start flash
+          if (flashInterval) clearInterval(flashInterval);
+          flashInterval = setInterval(()=> {
+            appState.flashTick = !appState.flashTick;
+            // update display color by re-rendering small piece
+            const disp = document.getElementById('timer-display');
+            if (disp) disp.style.color = appState.flashTick ? '#fff' : '#111';
+            // also update background of finish block when showing - achieved by renderClock toggling
+            // we keep flashInterval to toggle background color with render
+            render(); // okay to re-render
+          }, 500);
+          render();
+          clearInterval(timerInterval);
+          timerInterval = null;
+          return;
+        }
+        appState.timer.timeLeft -= 1;
+        // update the display if exists
+        const disp = document.getElementById('timer-display');
+        if (disp) disp.textContent = formatTimer(appState.timer.timeLeft);
+      }, 1000);
+    }
+    function stopTimer(reset){
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      if (flashInterval) { clearInterval(flashInterval); flashInterval = null; appState.flashTick = false; }
+      if (reset) {
+        appState.timer = { h:0,m:0,s:0, timeLeft:0, running:false, finished:false };
+      } else {
+        appState.timer.running = false;
+      }
+    }
+
+    /* Stopwatch logic */
+    function startStopwatch(){
+      if (stopwatchInterval) clearInterval(stopwatchInterval);
+      appState.stopwatch.running = true;
+      const startTime = Date.now() - (appState.stopwatch.ms || 0);
+      let last = Date.now();
+      stopwatchInterval = setInterval(()=>{
+        const now = Date.now();
+        const elapsed = now - startTime;
+        let totalMs = elapsed;
+        const ms = totalMs % 1000;
+        const totalSeconds = Math.floor(totalMs / 1000);
+        const s = totalSeconds % 60;
+        const m = Math.floor(totalSeconds / 60) % 60;
+        const h = Math.floor(totalSeconds / 3600);
+        appState.stopwatch = { h, m, s, ms, running:true };
+        const swd = document.getElementById('sw-display');
+        if (swd) swd.textContent = formatStopwatch(appState.stopwatch);
+      }, 50);
+    }
+    function stopStopwatch(){
+      appState.stopwatch.running = false;
+      if (stopwatchInterval) { clearInterval(stopwatchInterval); stopwatchInterval = null; }
+    }
+    function resetStopwatch(){
+      stopStopwatch();
+      appState.stopwatch = { h:0,m:0,s:0,ms:0, running:false };
+    }
+
+    function formatStopwatch(sw){
+      return `${String(sw.h).padStart(2,'0')}:${String(sw.m).padStart(2,'0')}:${String(sw.s).padStart(2,'0')}.${String(Math.floor((sw.ms||0)/10)).padStart(2,'0')}`;
+    }
+
+    function formatTimer(totalSeconds){
+      const h = Math.floor(totalSeconds / 3600);
+      const m = Math.floor((totalSeconds % 3600) / 60);
+      const s = totalSeconds % 60;
+      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+
+    /* ---- Settings ---- */
+    function renderSettings(){
+      screenEl.innerHTML = '';
+      const wrap = document.createElement('div'); wrap.className='card';
+      const header = document.createElement('div'); header.style.display='flex'; header.style.justifyContent='space-between'; header.style.alignItems='center';
+      header.style.marginBottom='12px';
+      header.innerHTML = `<div style="font-weight:700">Settings</div><div><button class="ghost" id="settings-home">Home</button></div>`;
+      wrap.appendChild(header);
+      document.addEventListener('click', (e)=>{ if(e.target && e.target.id === 'settings-home') go('home'); });
+
+      const settingsColumn = document.createElement('div'); settingsColumn.className='settings';
+
+      // Theme toggle
+      const themeRow = document.createElement('div'); themeRow.className='row';
+      const themeLabel = document.createElement('div'); themeLabel.textContent = 'Theme';
+      const themeBtn = document.createElement('button'); themeBtn.textContent = appState.theme === 'light' ? 'Switch to Dark' : 'Switch to Light';
+      themeBtn.onclick = () => {
+        appState.theme = appState.theme === 'light' ? 'dark' : 'light';
+        localStorage.setItem(THEME_KEY, appState.theme);
+        applyTheme();
+        render(); // re-render to update text
+      };
+      themeRow.appendChild(themeLabel); themeRow.appendChild(themeBtn);
+      settingsColumn.appendChild(themeRow);
+
+      // change password
+      const pwdRow = document.createElement('div'); pwdRow.className='row';
+      const pwdLabel = document.createElement('div'); pwdLabel.textContent = 'Password';
+      const pwdBtn = document.createElement('button'); pwdBtn.textContent = 'Change Password';
+      pwdBtn.onclick = () => {
+        const current = prompt('Enter current 4-digit password:');
+        if (String(current) !== appState.password) { alert('Current password incorrect'); return; }
+        const next = prompt('Enter new 4-digit password:');
+        if (!/^[0-9]{4}$/.test(next)) { alert('New password must be 4 digits'); return; }
+        if (next === current) { alert('New password must be different'); return; }
+        appState.password = next;
+        localStorage.setItem(STORAGE_KEY, next);
+        alert('Password changed');
+      };
+      pwdRow.appendChild(pwdLabel); pwdRow.appendChild(pwdBtn);
+      settingsColumn.appendChild(pwdRow);
+
+      // about
+      const about = document.createElement('div'); about.className='card'; about.style.padding='12px'; about.innerHTML = `<div style="font-weight:700">About</div><div class="muted" style="margin-top:6px">s2 — Smartphone Simulator v1.0 (vanilla)</div>`;
+      settingsColumn.appendChild(about);
+
+      wrap.appendChild(settingsColumn);
+      screenEl.appendChild(wrap);
+    }
+
+    // bottom lock button toggles to lock screen
+    lockBtn.addEventListener('click', ()=>{
+      appState.current = 'unlock';
+      render();
+    });
+
+    // Initialize default render
+    render();
+
+    // Expose go for console usage (optional)
+    window.s2go = go;
+    window.s2state = appState;
+
+    // Ensure we render periodically for flashing UI features
+    setInterval(()=> {
+      // if timer finished and flashTick toggling, re-render small pieces
+      if (appState.timer.finished && flashInterval) {
+        // toggle color flag is already handled in interval; just re-render tree
+        // avoid too frequent global re-render, but okay to refresh every 500ms in that mode
+        render();
+      }
+    }, 500);
+
+  </script>
+</body>
+</html>
